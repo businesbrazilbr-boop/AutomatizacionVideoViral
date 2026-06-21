@@ -64,17 +64,20 @@ jobs:
           done || true
       - name: Download assets from R2
         run: |-
-          echo "Date: ${{ env.DATE }}"
-          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html --remote || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/thumbs/ --remote 2>/dev/null | jq -r 'if type=="array" then .[].key else objects|.key end' 2>/dev/null | while read key; do
-            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/thumbs/$(basename $key)" --remote || true
-          done || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/memes/ --remote 2>/dev/null | jq -r 'if type=="array" then .[].key else objects|.key end' 2>/dev/null | while read key; do
-            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/memes/$(basename $key)" --remote || true
-          done || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/audio/ --remote 2>/dev/null | jq -r 'if type=="array" then .[].key else objects|.key end' 2>/dev/null | while read key; do
-            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/audio/$(basename $key)" --remote || true
-          done || true
+          mkdir -p render-assets/thumbs render-assets/memes render-assets/audio
+          echo "Downloading composition.html for ${{ env.DATE }}"
+          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html --remote
+          if [ -f render-assets/composition.html ]; then
+            grep -oP 'src="(thumbs/[^"]+|memes/[^"]+|audio/[^"]+)"' render-assets/composition.html | while read -r match; do
+              src="${match#src=\"}"
+              src="${src%\"}"
+              key="${{ env.DATE }}/$src"
+              local_file="render-assets/$src"
+              mkdir -p "$(dirname "$local_file")"
+              echo "Downloading $key"
+              wrangler r2 object get "viral-video-assets/$key" --file "$local_file" --remote || true
+            done
+          fi
       - name: Render to MP4
         run: |-
           cd render-assets && mkdir -p output

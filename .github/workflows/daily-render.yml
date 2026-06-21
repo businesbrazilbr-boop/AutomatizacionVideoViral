@@ -83,10 +83,22 @@ jobs:
             
             # Strategy 3: Generate placeholder video
             echo "  Generating placeholder video..."
-            TITLE=$(echo "$ITEM" | jq -r '.title // "Video"')
-            ffmpeg -y -f lavfi -i "color=c=blue:s=1080x1920:d=6" \
-              -vf "drawtext=text='$TITLE':fontsize=36:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2" \
-              -c:v libx264 -preset ultrafast -crf 28 "$OUT" 2>/dev/null || true
+            TITLE=$(echo "$ITEM" | jq -r '.title // "Video"' | sed "s/'//g; s/\"/'/g; s/[^a-zA-Z0-9 ]//g")
+            COLORS=("red" "green" "blue" "purple" "orange")
+            IDX=$((RANDOM % 5))
+            COLOR="${COLORS[$IDX]}"
+            FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            [ -f "$FONT" ] || FONT=""
+            if [ -n "$TITLE" ]; then
+              ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6" \
+                -vf "drawtext=text=$TITLE:fontsize=36:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2${FONT:+:fontfile=$FONT}" \
+                -c:v libx264 -preset ultrafast -crf 28 "$OUT" 2>/dev/null || \
+              ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6" \
+                -c:v libx264 -preset ultrafast -crf 28 "$OUT" 2>/dev/null || true
+            else
+              ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6" \
+                -c:v libx264 -preset ultrafast -crf 28 "$OUT" 2>/dev/null || true
+            fi
             if [ -f "$OUT" ]; then
               echo "  FALLBACK: $FNAME placeholder created ($(stat -c%s "$OUT") bytes)"
             fi
@@ -104,8 +116,14 @@ jobs:
           if [ -f render-assets/composition.html ]; then
             grep -oP 'src="(videos/[^"]+|thumbs/[^"]+|memes/[^"]+|audio/[^"]+)"' render-assets/composition.html | while read -r match; do
               src="${match#src=\"}"; src="${src%\"}"
-              mkdir -p "$(dirname "render-assets/$src")"
-              curl -sf "${WORKER_URL}/api/assets/${{ env.DATE }}/$src" -o "render-assets/$src" || true
+              local_path="render-assets/$src"
+              if [ -f "$local_path" ] && [ "$(stat -c%s "$local_path" 2>/dev/null || echo 0)" -gt 1000 ]; then
+                echo "  Already have $src (skipping)"
+              else
+                mkdir -p "$(dirname "$local_path")"
+                tmp_path="${local_path}.tmp"
+                curl -sf "${WORKER_URL}/api/assets/${{ env.DATE }}/$src" -o "$tmp_path" && mv "$tmp_path" "$local_path" || rm -f "$tmp_path"
+              fi
             done
             cp render-assets/composition.html render-assets/index.html
           fi

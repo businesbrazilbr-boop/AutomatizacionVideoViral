@@ -60,37 +60,42 @@ jobs:
             [ -f "$f" ] || continue
             key="${{ env.DATE }}/videos/$(basename "$f")"
             echo "Uploading $f to $key"
-            wrangler r2 object put "viral-video-assets/$key" --file "$f" || true
+            wrangler r2 object put "viral-video-assets/$key" --file "$f" --remote || true
           done || true
       - name: Download assets from R2
         run: |-
           echo "Date: ${{ env.DATE }}"
-          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/thumbs/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
-            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/thumbs/$(basename $key)" || true
+          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html --remote || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/thumbs/ --remote 2>/dev/null | jq -r 'if type=="array" then .[].key else objects|.key end' 2>/dev/null | while read key; do
+            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/thumbs/$(basename $key)" --remote || true
           done || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/memes/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
-            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/memes/$(basename $key)" || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/memes/ --remote 2>/dev/null | jq -r 'if type=="array" then .[].key else objects|.key end' 2>/dev/null | while read key; do
+            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/memes/$(basename $key)" --remote || true
           done || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/audio/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
-            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/audio/$(basename $key)" || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/audio/ --remote 2>/dev/null | jq -r 'if type=="array" then .[].key else objects|.key end' 2>/dev/null | while read key; do
+            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/audio/$(basename $key)" --remote || true
           done || true
       - name: Render to MP4
         run: |-
           cd render-assets && mkdir -p output
           if [ -f composition.html ]; then
-            npx hyperframes render --input composition.html --output output/output.mp4 || true
+            npx hyperframes render --input composition.html --output output/output.mp4
           fi
           if [ ! -f output/output.mp4 ]; then
-            python3 -c "h='<h1>${{ env.DATE }}</h1>';open('fb.html','w').write(h)" 2>/dev/null
+            echo "Hyperframes render failed, trying fallback"
+            python3 -c "h='<h1>${{ env.DATE }}</h1>';open('fb.html','w').write(h)"
             npx hyperframes render --input fb.html --output output/output.mp4 || true
           fi
       - name: Generate thumbnail
-        run: ffmpeg -i render-assets/output/output.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" render-assets/output/thumbnail.jpg -y || true
+        run: if [ -f render-assets/output/output.mp4 ]; then ffmpeg -i render-assets/output/output.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" render-assets/output/thumbnail.jpg -y; fi || true
       - name: Upload to R2
         run: |-
-          wrangler r2 object put viral-video-renders/${{ env.DATE }}/output.mp4 --file render-assets/output/output.mp4 || true
-          wrangler r2 object put viral-video-renders/${{ env.DATE }}/thumbnail.jpg --file render-assets/output/thumbnail.jpg || true
+          if [ -f render-assets/output/output.mp4 ]; then
+            wrangler r2 object put viral-video-renders/${{ env.DATE }}/output.mp4 --file render-assets/output/output.mp4 --remote
+            if [ -f render-assets/output/thumbnail.jpg ]; then
+              wrangler r2 object put viral-video-renders/${{ env.DATE }}/thumbnail.jpg --file render-assets/output/thumbnail.jpg --remote
+            fi
+          fi
       - name: Notify Cloudflare
         run: |-
           DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 render-assets/output/output.mp4 2>/dev/null || echo "0")

@@ -8,6 +8,8 @@ on:
         type: string
 env:
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  RENDER_CALLBACK_URL: ${{ secrets.RENDER_CALLBACK_URL }}
+  RENDER_CALLBACK_SECRET: ${{ secrets.RENDER_CALLBACK_SECRET }}
 jobs:
   render:
     runs-on: ubuntu-latest
@@ -20,16 +22,34 @@ jobs:
         run: |-
           sudo apt update -qq && sudo apt install ffmpeg -y -qq
           npm install -g wrangler hyperframes
-      - name: Download and render
+      - name: Download assets and render
         run: |-
-          mkdir -p r && cd r
-          wrangler r2 object get viral-video-assets/${{ inputs.date }}/composition/index.html --file c.html || true
-          if [ -f c.html ]; then
-            npx hyperframes render --input c.html --output o.mp4 || true
+          mkdir -p r/thumbs r/memes
+          wrangler r2 object get viral-video-assets/${{ inputs.date }}/composition/index.html --file r/c.html --remote
+          if [ -f r/c.html ]; then
+            grep -oP 'src="(thumbs/[^"]+|memes/[^"]+|audio/[^"]+)"' r/c.html | while read -r match; do
+              src="${match#src=\"}"
+              src="${src%\"}"
+              key="${{ inputs.date }}/$src"
+              mkdir -p "$(dirname "r/$src")"
+              wrangler r2 object get "viral-video-assets/$key" --file "r/$src" --remote || true
+            done
+            (cd r && npx hyperframes render --input c.html --output o.mp4)
           fi
-          if [ ! -f o.mp4 ]; then
-            python3 -c "open('f.html','w').write('<h1>${{ inputs.date }}</h1>')"
-            npx hyperframes render --input f.html --output o.mp4 || true
+          if [ ! -f r/o.mp4 ]; then
+            python3 -c "open('r/f.html','w').write('<h1>${{ inputs.date }}</h1>')"
+            npx hyperframes render --input r/f.html --output r/o.mp4 || true
           fi
-      - name: Upload
-        run: wrangler r2 object put viral-video-renders/${{ inputs.date }}/manual-o.mp4 --file r/o.mp4 || true
+      - name: Upload & notify
+        run: |-
+          if [ -f r/o.mp4 ]; then
+            wrangler r2 object put viral-video-renders/${{ inputs.date }}/output.mp4 --file r/o.mp4 --remote
+            ffmpeg -i r/o.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" r/thumbnail.jpg -y || true
+            if [ -f r/thumbnail.jpg ]; then
+              wrangler r2 object put viral-video-renders/${{ inputs.date }}/thumbnail.jpg --file r/thumbnail.jpg --remote
+            fi
+          fi
+          DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 r/o.mp4 2>/dev/null || echo "0")
+          curl -X POST "${RENDER_CALLBACK_URL}" \
+            -H "Content-Type: application/json" \
+            -d "{\"date\":\"${{ inputs.date }}\",\"status\":\"done\",\"r2Key\":\"${{ inputs.date }}/output.mp4\",\"duration\":${DURATION:-0},\"secret\":\"${RENDER_CALLBACK_SECRET}\"}"

@@ -1,0 +1,11 @@
+name: Test Dispatch
+on:
+  repository_dispatch:
+    types: [test-event]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Dispatched OK at 06/20/2026 21:39:43" > test-output.txt

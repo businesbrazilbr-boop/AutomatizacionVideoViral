@@ -44,3 +44,13 @@ jobs:
           wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/videos/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
             wrangler r2 object get viral-video-assets/$key --file render-assets/videos/$(basename $key) || true
           done || true
+      - name: Render to MP4
+        run: |-
+          cd render-assets && mkdir -p output
+          if ls videos/*.mp4 2>/dev/null; then
+            npx hyperframes render --input composition.html --output output/output.mp4 || true
+          fi
+          if [ ! -f output/output.mp4 ]; then
+            python3 -c "h='<h1>${{ env.DATE }}</h1>';open('fb.html','w').write(h)"
+            npx hyperframes render --input fb.html --output output/output.mp4 || true
+          fi

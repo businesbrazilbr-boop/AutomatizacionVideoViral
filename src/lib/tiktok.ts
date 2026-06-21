@@ -6,7 +6,7 @@ export async function discoverTikTokTrending(omkarKey?: string): Promise<ViralVi
   if (omkarKey) {
     try {
       const res = await fetch(`${OMKAR_API}?market=us&max_results=15`, {
-        headers: { 'x-api-key': omkarKey },
+        headers: { 'API-Key': omkarKey },
       });
       if (res.ok) {
         const data: any = await res.json();

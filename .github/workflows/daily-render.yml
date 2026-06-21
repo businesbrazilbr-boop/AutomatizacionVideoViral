@@ -72,6 +72,9 @@ jobs:
           wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/memes/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
             wrangler r2 object get "viral-video-assets/$key" --file "render-assets/memes/$(basename $key)" || true
           done || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/audio/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
+            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/audio/$(basename $key)" || true
+          done || true
       - name: Render to MP4
         run: |-
           cd render-assets && mkdir -p output

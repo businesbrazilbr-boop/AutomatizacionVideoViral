@@ -28,7 +28,7 @@ export interface TrendingAudio {
   artist: string;
   url: string;
   duration: number;
-  platform: 'tiktok' | 'instagram' | 'freesound';
+  platform: 'tiktok' | 'instagram' | 'freesound' | 'jamendo';
   videoCount: number;
   isTrending: boolean;
 }
@@ -81,4 +81,6 @@ export interface Env {
   APIFY_API_KEY: string;
   OMKAR_API_KEY: string;
   FREESOUND_API_KEY: string;
+  YOUTUBE_API_KEY: string;
+  JAMENDO_CLIENT_ID: string;
 }

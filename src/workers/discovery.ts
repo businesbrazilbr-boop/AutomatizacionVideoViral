@@ -18,11 +18,11 @@ export async function runDiscovery(env: Env): Promise<DiscoveryResult> {
   const date = new Date().toISOString().split('T')[0];
 
   const [youtubeVideos, tiktokVideos, instagramVideos, memes, audio] = await Promise.all([
-    discoverYouTubeTrending(),
+    discoverYouTubeTrending(env.YOUTUBE_API_KEY),
     discoverTikTokTrending(env.OMKAR_API_KEY),
     discoverInstagramTrending(),
     discoverTrendingMemes(),
-    discoverTrendingAudio(env.FREESOUND_API_KEY),
+    discoverTrendingAudio(env.JAMENDO_CLIENT_ID, env.FREESOUND_API_KEY),
   ]);
 
   const videos = [

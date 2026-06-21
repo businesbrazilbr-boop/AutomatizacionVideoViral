@@ -69,11 +69,29 @@ export default {
       const renderMatch = path.match(/^\/api\/render\/(\d{4}-\d{2}-\d{2})$/);
       if (method === 'POST' && renderMatch) {
         const date = renderMatch[1];
-        const doId = env.PROJECT_DO.idFromName(date);
-        const stub = env.PROJECT_DO.get(doId);
-        const response = await stub.fetch(new Request('http://do/render', { method: 'POST' }));
-        const data = await response.json();
-        return Response.json(data, { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        const githubRes = await fetch(
+          `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/actions/workflows/299515665/dispatches`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'AutomatizacionVideoViral',
+            },
+            body: JSON.stringify({ ref: 'master', inputs: { date } }),
+          }
+        );
+
+        if (!githubRes.ok) {
+          const errText = await githubRes.text();
+          return Response.json({ error: `GitHub dispatch failed: ${githubRes.status} ${errText}` }, { status: 500, headers: corsHeaders });
+        }
+
+        await env.DB.prepare(
+          `UPDATE daily_projects SET status = 'rendering' WHERE id = ?`
+        ).bind(date).run();
+
+        return Response.json({ date, status: 'rendering' }, { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       }
 
       // POST /api/webhook/render-callback — callback from GitHub Actions
@@ -199,7 +217,7 @@ export default {
   },
 };
 
-async function handleCompose(env: Env, date: string) {
+async function handleCompose(env: Env, date: string, useAssets = true) {
   const project: any = await env.DB.prepare(`SELECT * FROM daily_projects WHERE id = ?`).bind(date).first();
   if (!project) throw new Error(`No project for ${date}`);
 
@@ -214,6 +232,9 @@ async function handleCompose(env: Env, date: string) {
   const videos: any[] = JSON.parse(project.videos_discovered || '[]');
   const memes: any[] = JSON.parse(project.memes_discovered || '[]');
 
+  const discoveryResult = { date, videos, memes, audio: [] as any[], selection };
+  const assetUrls = useAssets ? await ensureAssets(env, date, discoveryResult as any) : { videos: [], memes: [], audio: null };
+
   const compKey = buildAssetR2Key(date, 'composition', 'index.html');
 
   const compositionHtml = generateComposition({
@@ -222,7 +243,7 @@ async function handleCompose(env: Env, date: string) {
     memes,
     audio: selection.selectedAudio,
     selection,
-    assetUrls: { videos: [], memes: [], audio: null },
+    assetUrls,
   });
 
   await uploadToR2(env.R2_ASSETS, compKey, compositionHtml, 'text/html');

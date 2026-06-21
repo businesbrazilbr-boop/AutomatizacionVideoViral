@@ -16,27 +16,24 @@ export interface CompositionInput {
 export function generateComposition(input: CompositionInput): string {
   const { date, videos, memes, audio, selection, assetUrls } = input;
   const duration = 30;
-  const fps = 30;
-
   let clipHtml = '';
   let gsapAnimations = '';
 
   const videoAssetMap = new Map(assetUrls.videos.map((v) => [v.id, v.r2Url]));
   const memeAssetMap = new Map(assetUrls.memes.map((m) => [m.id, m.r2Url]));
 
-  // Video clips
   let currentTimeLocal = 0;
   const clipDuration = Math.floor(duration / Math.max(selection.selectedVideos.length, 1));
 
   selection.selectedVideos.forEach((video, i) => {
     const r2Key = videoAssetMap.get(video.id);
-    const src = r2Key ? `../${r2Key}` : video.url;
+    const thumbSrc = r2Key ? `thumbs/${video.id}.jpg` : video.thumbnailUrl;
     const startLocal = currentTimeLocal;
     const endLocal = startLocal + clipDuration;
 
     clipHtml += `
-      <video id="clip-${i}" class="clip" data-start="${startLocal}" data-duration="${clipDuration}" data-track-index="${i}"
-        src="${src}" muted playsinline style="width:100%;height:100%;object-fit:cover;"></video>`;
+      <img id="clip-${i}" class="clip" data-start="${startLocal}" data-duration="${clipDuration}" data-track-index="${i}"
+        src="${thumbSrc}" style="width:100%;height:100%;object-fit:cover;">`;
 
     gsapAnimations += `
       tl.from("#clip-${i}", { opacity: 0, scale: ${i > 0 ? 1.1 : 1}, duration: 0.4, ease: "power2.out" }, ${startLocal});
@@ -45,10 +42,9 @@ export function generateComposition(input: CompositionInput): string {
     currentTimeLocal = endLocal;
   });
 
-  // Meme overlays
   selection.selectedMemes.forEach((meme, i) => {
     const r2Key = memeAssetMap.get(meme.id);
-    const src = r2Key ? `../${r2Key}` : meme.url;
+    const src = r2Key ? `memes/${meme.id}.jpg` : meme.url;
     const memeStart = 20 + i * 3;
     const memeDuration = 3;
 
@@ -61,7 +57,6 @@ export function generateComposition(input: CompositionInput): string {
       tl.to("#meme-${i}", { opacity: 0, duration: 0.3 }, ${memeStart + memeDuration - 0.3});`;
   });
 
-  // Captions
   selection.captions.forEach((cap, i) => {
     clipHtml += `
       <div id="caption-${i}" class="clip" data-start="${cap.start}" data-duration="${cap.end - cap.start}" data-track-index="${60 + i}"
@@ -74,13 +69,11 @@ export function generateComposition(input: CompositionInput): string {
       tl.to("#caption-${i}", { opacity: 0, y: -20, duration: 0.3 }, ${cap.end - 0.3});`;
   });
 
-  // Audio background
   const audioElement = assetUrls.audio && selection.selectedAudio
     ? `
-    <audio class="clip" data-track="bg" src="../${assetUrls.audio.r2Url}" data-volume="0.3" loop></audio>`
+    <audio class="clip" data-track="bg" src="audio/${assetUrls.audio.id}.mp3" data-volume="0.3" loop></audio>`
     : '';
 
-  // Outro CTA
   clipHtml += `
     <div id="outro" class="clip" data-start="27" data-duration="3" data-track-index="99"
       style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0f23 0%,#1a1a3e 100%);opacity:0;">
@@ -101,7 +94,7 @@ export function generateComposition(input: CompositionInput): string {
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{width:1080px;height:1920px;overflow:hidden;background:#000}
     .clip{position:absolute;opacity:0}
-    video{width:100%;height:100%;object-fit:cover}
+    img{width:100%;height:100%;object-fit:cover}
   </style>
 </head>
 <body>

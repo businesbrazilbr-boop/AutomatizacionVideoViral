@@ -24,7 +24,7 @@ export class ProjectDO implements DurableObject {
     }
 
     if (method === 'POST' && url.pathname === '/render') {
-      return this.handleRenderStart();
+      return this.handleRenderStart(request);
     }
 
     if (method === 'POST' && url.pathname === '/render/callback') {
@@ -56,15 +56,23 @@ export class ProjectDO implements DurableObject {
     return Response.json(project);
   }
 
-  private async handleRenderStart(): Promise<Response> {
-    const project = await this.getProject();
-    if (!project) return new Response('No project', { status: 400 });
+  private async handleRenderStart(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const date = url.searchParams.get('date') || '';
+    let project = await this.getProject();
+    if (!project) {
+      const row: any = await this.env.DB.prepare(
+        `SELECT * FROM daily_projects WHERE id = ?`
+      ).bind(date).first();
+      if (!row) return Response.json({ error: 'No project' }, { status: 400 });
+      project = { id: row.id, date: row.date, status: row.status };
+    }
 
     project.status = 'rendering';
     await this.state.storage?.put('project', project);
 
     const githubRes = await fetch(
-      `https://api.github.com/repos/${this.env.GITHUB_OWNER}/${this.env.GITHUB_REPO}/dispatches`,
+      `https://api.github.com/repos/${this.env.GITHUB_OWNER}/${this.env.GITHUB_REPO}/actions/workflows/299515665/dispatches`,
       {
         method: 'POST',
         headers: {
@@ -73,17 +81,18 @@ export class ProjectDO implements DurableObject {
           'User-Agent': 'AutomatizacionVideoViral',
         },
         body: JSON.stringify({
-          event_type: 'render-request',
-          client_payload: { date: project.date },
+          ref: 'master',
+          inputs: { date: project.date },
         }),
       }
     );
 
     if (!githubRes.ok) {
+      const errText = await githubRes.text();
       project.status = 'failed';
-      project.error = `GitHub dispatch failed: ${githubRes.status}`;
+      project.error = `GitHub dispatch failed: ${githubRes.status} ${errText}`;
       await this.state.storage?.put('project', project);
-      return new Response(project.error, { status: 500 });
+      return Response.json({ error: project.error }, { status: 500 });
     }
 
     await this.env.DB.prepare(

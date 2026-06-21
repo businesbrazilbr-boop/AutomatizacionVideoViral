@@ -20,8 +20,8 @@ export async function discoverFreesoundAudio(freesoundKey?: string): Promise<Tre
     const queries = ['trending', 'viral', 'popular', 'dance', 'energy', 'beat'];
     const results = await Promise.allSettled(
       queries.map((q) =>
-        fetch(`${FREESOUND_API}?query=${q}&token=${freesoundKey}&page_size=5&fields=id,name,username,duration,previews,downloads`,
-          { headers: { 'User-Agent': 'AutomatizacionVideoViral/1.0' } }
+        fetch(`${FREESOUND_API}?query=${q}&page_size=5&fields=id,name,username,duration,previews,downloads`,
+          { headers: { 'Authorization': `Token ${freesoundKey}`, 'User-Agent': 'AutomatizacionVideoViral/1.0' } }
         ).then((r) => r.ok ? r.json<FreesoundResult>() : null)
       )
     );

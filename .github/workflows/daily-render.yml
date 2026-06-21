@@ -38,6 +38,9 @@ jobs:
         run: npm install -g hyperframes
       - name: Download assets from R2
         run: |-
-          mkdir -p render-assets
+          mkdir -p render-assets/videos render-assets/memes render-assets/audio
           echo "Date: ${{ env.DATE }}"
           wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/videos/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
+            wrangler r2 object get viral-video-assets/$key --file render-assets/videos/$(basename $key) || true
+          done || true

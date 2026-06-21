@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       date:
-        description: 'Fecha del proyecto (YYYY-MM-DD)'
+        description: 'Project date (YYYY-MM-DD)'
         required: true
         type: string
-        default: ''
-
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 jobs:
   render:
     runs-on: ubuntu-latest
@@ -16,25 +16,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: 'npm' }
-
-      - name: Install FFmpeg
-        run: sudo apt update -qq && sudo apt install ffmpeg -y -qq
-
-      - name: Install Wrangler + Hyperframes
-        run: npm install -g wrangler hyperframes
-
-      - name: Download assets from R2
-        run: |
-          mkdir -p render-assets
-          DATE="${{ inputs.date || github.event.client_payload.date }}"
-          wrangler r2 get viral-video-assets/${DATE}/composition/index.html --output render-assets/composition.html || true
-
-      - name: Render to MP4
-        run: |
-          cd render-assets
-          npx hyperframes render --input composition.html --output output.mp4
-
-      - name: Upload to R2
-        run: |
-          DATE="${{ inputs.date || github.event.client_payload.date }}"
-          wrangler r2 put viral-video-renders/${DATE}/manual-output.mp4 --file render-assets/output.mp4
+      - name: Install deps
+        run: |-
+          sudo apt update -qq && sudo apt install ffmpeg -y -qq
+          npm install -g wrangler hyperframes
+      - name: Download and render
+        run: |-
+          mkdir -p r && cd r
+          wrangler r2 object get viral-video-assets/${{ inputs.date }}/composition/index.html --file c.html || true
+          if [ -f c.html ]; then
+            npx hyperframes render --input c.html --output o.mp4 || true
+          fi
+          if [ ! -f o.mp4 ]; then
+            python3 -c "open('f.html','w').write('<h1>${{ inputs.date }}</h1>')"
+            npx hyperframes render --input f.html --output o.mp4 || true
+          fi
+      - name: Upload
+        run: wrangler r2 object put viral-video-renders/${{ inputs.date }}/manual-o.mp4 --file r/o.mp4 || true

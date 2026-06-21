@@ -27,42 +27,30 @@ jobs:
           if [ -n "${INPUT_DATE}" ]; then echo "DATE=${INPUT_DATE}" >> $GITHUB_ENV; else echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV; fi
       - name: Install deps
         run: |-
-          sudo apt update -qq && sudo apt install ffmpeg unzip -y -qq
+          sudo apt update -qq && sudo apt install ffmpeg -y -qq
           npm install -g hyperframes
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && sudo chmod a+x /usr/local/bin/yt-dlp
-          curl -fsSL https://deno.land/install.sh | sh
-          export DENO_INSTALL="$HOME/.deno"
-          echo "DENO_INSTALL=$HOME/.deno" >> $GITHUB_ENV
-          echo "$HOME/.deno/bin" >> $GITHUB_PATH
-      - name: Download videos (yt-dlp)
-        shell: bash
+      - name: Download videos (via Worker)
         run: |-
-          set +e
-          export DENO_INSTALL="$HOME/.deno"
-          export PATH="$DENO_INSTALL/bin:$PATH"
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
           mkdir -p render-assets/videos
           RESP=$(curl -s "${WORKER_URL}/api/downloads/${{ env.DATE }}")
           echo "$RESP" | jq -c '.downloads[]' 2>/dev/null | while read -r ITEM; do
-            URL=$(echo "$ITEM" | jq -r '.source_url')
             ID=$(echo "$ITEM" | jq -r '.id')
+            URL=$(echo "$ITEM" | jq -r '.source_url')
             [ -z "$URL" ] && continue
+            YTID=$(echo "$URL" | sed 's/.*v=//' | sed 's/&.*//')
             FNAME=$(echo "$ID" | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}_//')
-            OUT="render-assets/videos/${FNAME}.mp4"
-            echo "Downloading $FNAME from $URL"
-            yt-dlp --js-runtimes deno \
-              -f "worst[ext=mp4]/best[ext=mp4]" \
-              --output "$OUT" "$URL" || true
-            if [ -f "$OUT" ]; then
-              echo "  OK: $FNAME (size: $(stat -c%s "$OUT" 2>/dev/null || echo 0) bytes)"
+            echo "Downloading $FNAME (yt:$YTID)"
+            DL_RESULT=$(curl -s -X POST "${WORKER_URL}/api/youtube-download" \
+              -H "Content-Type: application/json" \
+              -d "{\"videoId\":\"$YTID\",\"date\":\"${{ env.DATE }}\",\"filename\":\"$FNAME\"}")
+            SIZE=$(echo "$DL_RESULT" | jq -r '.size // "0"')
+            if [ "$SIZE" != "0" ] && [ "$SIZE" != "null" ]; then
+              echo "  OK: $FNAME ($SIZE bytes)"
             else
               echo "  FAILED: $FNAME"
             fi
           done || true
-          echo "=== Downloaded files ==="
-          ls -la render-assets/videos/ 2>/dev/null || true
-          echo "=== Count ==="
-          ls render-assets/videos/*.mp4 2>/dev/null | wc -l || true
       - name: Download composition assets
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"

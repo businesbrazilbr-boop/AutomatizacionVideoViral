@@ -4,6 +4,7 @@ import { ensureAssets } from './ingest';
 import { generateComposition } from '../lib/composition-engine';
 import { ProjectDO } from '../agents/project-do';
 import { uploadToR2, buildAssetR2Key } from '../lib/r2-utils';
+import { downloadYouTubeVideo } from '../lib/youtube-downloader';
 
 export { ProjectDO };
 
@@ -113,7 +114,8 @@ export default {
       }
 
       // GET /api/downloads/:date — pending video downloads for GitHub Actions
-      const downloadsMatch = path.match(/^\/api\/downloads\/(\d{4}-\d{2}-\d{2})$/);
+      // Also matches /api/webhook/downloads/:date (workflow has wrong URL construction)
+      const downloadsMatch = path.match(/^\/api\/(?:webhook\/)?downloads\/(\d{4}-\d{2}-\d{2})$/);
       if (method === 'GET' && downloadsMatch) {
         const date = downloadsMatch[1];
         const { results } = await env.DB.prepare(
@@ -134,6 +136,74 @@ export default {
             'Content-Disposition': `attachment; filename="viral-${date}.mp4"`,
             ...corsHeaders,
           },
+        });
+      }
+
+      // GET /api/render/:date/thumbnail.jpg — download thumbnail
+      const thumbMatch = path.match(/^\/api\/render\/(\d{4}-\d{2}-\d{2})\/thumbnail\.jpg$/);
+      if (method === 'GET' && thumbMatch) {
+        const date = thumbMatch[1];
+        const obj = await env.R2_RENDERS.get(`${date}/thumbnail.jpg`);
+        if (!obj) return new Response('Not found', { status: 404 });
+        return new Response(obj.body, {
+          headers: { 'Content-Type': 'image/jpeg', ...corsHeaders },
+        });
+      }
+
+      // GET /api/assets/:date/:path+ — serve composition assets for GitHub Actions download
+      const assetMatch = path.match(/^\/api\/assets\/(\d{4}-\d{2}-\d{2})\/(.+)$/);
+      if (method === 'GET' && assetMatch) {
+        const date = assetMatch[1];
+        const assetPath = assetMatch[2];
+        const obj = await env.R2_ASSETS.get(`${date}/${assetPath}`);
+        if (!obj) return new Response('Not found', { status: 404 });
+        const ext = assetPath.split('.').pop()?.toLowerCase() || '';
+        const mime: Record<string, string> = {
+          jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+          gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4',
+          mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
+          json: 'application/json', html: 'text/html', txt: 'text/plain',
+          svg: 'image/svg+xml', csv: 'text/csv', ttf: 'font/ttf',
+          woff: 'font/woff', woff2: 'font/woff2',
+        };
+        const contentType = mime[ext] || 'application/octet-stream';
+        return new Response(obj.body, {
+          headers: { 'Content-Type': contentType, ...corsHeaders },
+        });
+      }
+
+      // POST /api/youtube-download — download YouTube video via Worker (bypass yt-dlp bot blocks)
+      if (method === 'POST' && path === '/api/youtube-download') {
+        const body: any = await request.json();
+        const { videoId, date, filename } = body;
+        if (!videoId || !date || !filename) {
+          return Response.json({ error: 'Missing videoId, date, or filename' }, { status: 400, headers: corsHeaders });
+        }
+        const buf = await downloadYouTubeVideo(videoId);
+        if (!buf || buf.byteLength < 1000) {
+          return Response.json({ error: 'Failed to download video' }, { status: 502, headers: corsHeaders });
+        }
+        const key = `${date}/videos/${filename}.mp4`;
+        await env.R2_ASSETS.put(key, buf, {
+          httpMetadata: { contentType: 'video/mp4' },
+        });
+        await env.DB.prepare(
+          `UPDATE assets SET metadata = json_set(metadata, '$.status', 'downloaded') WHERE project_id = ? AND id = ?`
+        ).bind(date, `${date}_yt_${videoId}`).run();
+        return Response.json({ ok: true, size: buf.byteLength }, { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      }
+
+      // PUT /api/upload/:date/:filename — accept rendered output from GitHub Actions
+      const uploadMatch = path.match(/^\/api\/upload\/(\d{4}-\d{2}-\d{2})\/(.+)$/);
+      if (method === 'PUT' && uploadMatch) {
+        const date = uploadMatch[1];
+        const filename = uploadMatch[2];
+        const buf = await request.arrayBuffer();
+        await env.R2_RENDERS.put(`${date}/${filename}`, buf, {
+          httpMetadata: { contentType: filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg' },
+        });
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
         });
       }
 

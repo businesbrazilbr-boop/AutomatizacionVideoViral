@@ -60,3 +60,9 @@ jobs:
         run: |-
           wrangler r2 object put viral-video-renders/${{ env.DATE }}/output.mp4 --file render-assets/output/output.mp4 || true
           wrangler r2 object put viral-video-renders/${{ env.DATE }}/thumbnail.jpg --file render-assets/output/thumbnail.jpg || true
+      - name: Notify Cloudflare
+        run: |-
+          DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 render-assets/output/output.mp4 2>/dev/null || echo "0")
+          curl -X POST "${RENDER_CALLBACK_URL}" \
+            -H "Content-Type: application/json" \
+            -d "{\"date\":\"${{ env.DATE }}\",\"status\":\"done\",\"r2Key\":\"${{ env.DATE }}/output.mp4\",\"duration\":${DURATION:-0},\"secret\":\"${RENDER_CALLBACK_SECRET}\"}"

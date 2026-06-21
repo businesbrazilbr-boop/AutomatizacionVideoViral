@@ -28,7 +28,7 @@ export interface TrendingAudio {
   artist: string;
   url: string;
   duration: number;
-  platform: 'tiktok' | 'instagram';
+  platform: 'tiktok' | 'instagram' | 'freesound';
   videoCount: number;
   isTrending: boolean;
 }
@@ -79,4 +79,6 @@ export interface Env {
   RENDER_CALLBACK_SECRET: string;
   GENVIRAL_API_KEY: string;
   APIFY_API_KEY: string;
+  OMKAR_API_KEY: string;
+  FREESOUND_API_KEY: string;
 }

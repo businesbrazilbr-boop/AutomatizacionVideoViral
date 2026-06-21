@@ -36,13 +36,41 @@ jobs:
         run: npm install -g wrangler
       - name: Install Hyperframes
         run: npm install -g hyperframes
+      - name: Install yt-dlp
+        run: sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && sudo chmod a+x /usr/local/bin/yt-dlp && yt-dlp --version
+      - name: Download pending videos (yt-dlp)
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |-
+          mkdir -p render-assets/videos render-assets/memes render-assets/audio render-assets/thumbs
+          DOWNLOADS=$(curl -s -H "Authorization: Bearer ${CF_API_TOKEN}" "${RENDER_CALLBACK_URL%/*}/downloads/${{ env.DATE }}" | jq -c '.downloads[]' 2>/dev/null || echo "")
+          echo "$DOWNLOADS" | while read item; do
+            URL=$(echo "$item" | jq -r '.source_url' 2>/dev/null)
+            ID=$(echo "$item" | jq -r '.id' 2>/dev/null)
+            PLATFORM=$(echo "$item" | jq -r '.platform' 2>/dev/null)
+            [ -z "$URL" ] && continue
+            echo "Downloading $PLATFORM:$ID from $URL"
+            yt-dlp -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]" \
+              --output "render-assets/videos/$(echo $ID | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}_//').mp4" \
+              "$URL" || true
+          done || true
+      - name: Upload pending videos to R2
+        run: |-
+          for f in render-assets/videos/*.mp4; do
+            [ -f "$f" ] || continue
+            key="${{ env.DATE }}/videos/$(basename "$f")"
+            echo "Uploading $f to $key"
+            wrangler r2 object put "viral-video-assets/$key" --file "$f" || true
+          done || true
       - name: Download assets from R2
         run: |-
-          mkdir -p render-assets/videos render-assets/memes render-assets/audio
           echo "Date: ${{ env.DATE }}"
           wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/videos/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
-            wrangler r2 object get viral-video-assets/$key --file render-assets/videos/$(basename $key) || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/thumbs/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
+            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/thumbs/$(basename $key)" || true
+          done || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/memes/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
+            wrangler r2 object get "viral-video-assets/$key" --file "render-assets/memes/$(basename $key)" || true
           done || true
       - name: Render to MP4
         run: |-

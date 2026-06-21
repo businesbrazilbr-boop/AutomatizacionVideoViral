@@ -1,6 +1,6 @@
 import type { Env } from '../types';
 import { runDiscovery } from './discovery';
-import { uploadAsset, downloadAssetsToProject, ensureAssets } from './ingest';
+import { ensureAssets } from './ingest';
 import { generateComposition } from '../lib/composition-engine';
 import { ProjectDO } from '../agents/project-do';
 import { uploadToR2, buildAssetR2Key } from '../lib/r2-utils';
@@ -94,6 +94,16 @@ export default {
         return Response.json(await response.json(), { headers: corsHeaders });
       }
 
+      // GET /api/downloads/:date — pending video downloads for GitHub Actions
+      const downloadsMatch = path.match(/^\/api\/downloads\/(\d{4}-\d{2}-\d{2})$/);
+      if (method === 'GET' && downloadsMatch) {
+        const date = downloadsMatch[1];
+        const { results } = await env.DB.prepare(
+          `SELECT id, project_id, type, platform, source_url, metadata FROM assets WHERE project_id = ? AND type = 'video' AND json_extract(metadata, '$.status') = 'pending_download'`
+        ).bind(date).all();
+        return Response.json({ downloads: results }, { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      }
+
       // GET /api/render/:date/output.mp4 — download rendered video
       const outputMatch = path.match(/^\/api\/render\/(\d{4}-\d{2}-\d{2})\/output\.mp4$/);
       if (method === 'GET' && outputMatch) {
@@ -153,10 +163,10 @@ export default {
         `UPDATE daily_projects SET status = 'ready', composition_r2_key = ? WHERE id = ?`
       ).bind(compKey, date).run();
 
-      // Step 4: Trigger render via GitHub Actions
+      // Step 4: Trigger render via GitHub Actions (workflow_dispatch)
       console.log('[Cron] Triggering GitHub Actions render...');
       const githubRes = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/dispatches`,
+        `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/actions/workflows/299515665/dispatches`,
         {
           method: 'POST',
           headers: {
@@ -165,14 +175,15 @@ export default {
             'User-Agent': 'AutomatizacionVideoViral',
           },
           body: JSON.stringify({
-            event_type: 'render-request',
-            client_payload: { date },
+            ref: 'master',
+            inputs: { date },
           }),
         }
       );
 
       if (!githubRes.ok) {
-        console.error(`[Cron] GitHub dispatch failed: ${githubRes.status}`);
+        const errText = await githubRes.text();
+        console.error(`[Cron] GitHub dispatch failed: ${githubRes.status} ${errText}`);
         await env.DB.prepare(
           `UPDATE daily_projects SET status = 'failed', render_error = ? WHERE id = ?`
         ).bind(`GitHub dispatch failed: ${githubRes.status}`, date).run();

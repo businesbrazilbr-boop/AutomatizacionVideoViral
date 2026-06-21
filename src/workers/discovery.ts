@@ -19,10 +19,10 @@ export async function runDiscovery(env: Env): Promise<DiscoveryResult> {
 
   const [youtubeVideos, tiktokVideos, instagramVideos, memes, audio] = await Promise.all([
     discoverYouTubeTrending(),
-    discoverTikTokTrending(env.GENVIRAL_API_KEY),
+    discoverTikTokTrending(env.OMKAR_API_KEY),
     discoverInstagramTrending(),
     discoverTrendingMemes(),
-    discoverTrendingAudio(),
+    discoverTrendingAudio(env.FREESOUND_API_KEY),
   ]);
 
   const videos = [

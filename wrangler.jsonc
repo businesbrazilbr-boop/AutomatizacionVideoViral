@@ -36,6 +36,8 @@
     "GITHUB_REPO": "AutomatizacionVideoViral",
     "RENDER_CALLBACK_SECRET": "callback-secret-123",
     "GENVIRAL_API_KEY": "",
-    "APIFY_API_KEY": ""
+    "APIFY_API_KEY": "",
+    "OMKAR_API_KEY": "ok_cbf393c7728a5b966e8030dec1820605",
+    "FREESOUND_API_KEY": "mRxkri4TBQJTv5q0EXY4"
   }
 }

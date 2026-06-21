@@ -1,9 +1,23 @@
 import type { TrendingMeme } from '../types';
+import { discoverRedditMemes } from './reddit';
 
 export async function discoverTrendingMemes(): Promise<TrendingMeme[]> {
+  const [justmeme, reddit] = await Promise.allSettled([
+    discoverJustmemeMemes(),
+    discoverRedditMemes(),
+  ]);
+
+  const memes: TrendingMeme[] = [];
+  if (justmeme.status === 'fulfilled') memes.push(...justmeme.value);
+  if (reddit.status === 'fulfilled') memes.push(...reddit.value);
+
+  return memes.slice(0, 20);
+}
+
+async function discoverJustmemeMemes(): Promise<TrendingMeme[]> {
   try {
     const res = await fetch('https://justmeme.wtf/api/v1/trending');
-    if (!res.ok) throw new Error('justmeme API failed');
+    if (!res.ok) return [];
     const data: any = await res.json();
     if (!data.trending || !Array.isArray(data.trending)) return [];
 
@@ -14,12 +28,8 @@ export async function discoverTrendingMemes(): Promise<TrendingMeme[]> {
       url: m.url,
       categories: m.categories || [],
       source: 'justmeme' as const,
-    })).slice(0, 10);
+    }));
   } catch {
     return [];
   }
-}
-
-export async function getMemeImageUrl(meme: TrendingMeme): Promise<string> {
-  return meme.url;
 }

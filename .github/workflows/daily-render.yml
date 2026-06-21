@@ -34,7 +34,8 @@ jobs:
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
           mkdir -p render-assets/videos
-          curl -sf "${WORKER_URL}/api/downloads/${{ env.DATE }}" | jq -c '.downloads[]' 2>/dev/null | while read item; do
+          DOWNLOADS=$(curl -s "${WORKER_URL}/api/downloads/${{ env.DATE }}" 2>/dev/null || echo '[]')
+          echo "$DOWNLOADS" | jq -c '.downloads[]' 2>/dev/null | while read item; do
             URL=$(echo "$item" | jq -r '.source_url' 2>/dev/null)
             ID=$(echo "$item" | jq -r '.id' 2>/dev/null)
             [ -z "$URL" ] && continue
@@ -42,7 +43,7 @@ jobs:
             yt-dlp -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]" \
               --output "render-assets/videos/$(echo $ID | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}_//').mp4" \
               "$URL" || true
-          done
+          done || true
       - name: Download composition assets
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"

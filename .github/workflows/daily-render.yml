@@ -43,32 +43,26 @@ jobs:
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
           mkdir -p render-assets/videos
           RESP=$(curl -s "${WORKER_URL}/api/downloads/${{ env.DATE }}")
-          ITEMS=$(echo "$RESP" | jq -c '.downloads[]' 2>/dev/null)
-          if [ -n "$ITEMS" ]; then
-            PIDS=""
-            while read -r ITEM; do
-              URL=$(echo "$ITEM" | jq -r '.source_url')
-              ID=$(echo "$ITEM" | jq -r '.id')
-              [ -z "$URL" ] && continue
-              FNAME=$(echo "$ID" | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}_//')
-              OUT="render-assets/videos/${FNAME}.mp4"
-              echo "Downloading $FNAME from $URL"
-              { yt-dlp --js-runtimes deno --extractor-args "youtube:player_client=web_creator" \
-                  -f "worst[ext=mp4]" --match-filter "duration < 120" \
-                  --output "$OUT" "$URL" || \
-                yt-dlp --js-runtimes deno \
-                  -f "worst[ext=mp4]" --match-filter "duration < 120" \
-                  --output "$OUT" "$URL" || \
-                echo "WARNING: All download methods failed for $FNAME"; } &
-              PIDS="$PIDS $!"
-            done < <(echo "$ITEMS")
-            echo "=== Waiting for background downloads ==="
-            for P in $PIDS; do wait "$P"; done
-            echo "=== Downloaded files ==="
-            ls -la render-assets/videos/ 2>/dev/null
-            echo "=== Count ==="
-            ls render-assets/videos/*.mp4 2>/dev/null | wc -l
-          fi
+          echo "$RESP" | jq -c '.downloads[]' 2>/dev/null | while read -r ITEM; do
+            URL=$(echo "$ITEM" | jq -r '.source_url')
+            ID=$(echo "$ITEM" | jq -r '.id')
+            [ -z "$URL" ] && continue
+            FNAME=$(echo "$ID" | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}_//')
+            OUT="render-assets/videos/${FNAME}.mp4"
+            echo "Downloading $FNAME from $URL"
+            yt-dlp --extractor-args "youtube:player_client=web_creator" \
+              -f "worst[ext=mp4]" --match-filter "duration < 120" \
+              --output "$OUT" "$URL" || true
+            if [ -f "$OUT" ]; then
+              echo "  OK: $FNAME (size: $(stat -c%s "$OUT" 2>/dev/null || echo 0) bytes)"
+            else
+              echo "  FAILED: $FNAME"
+            fi
+          done || true
+          echo "=== Downloaded files ==="
+          ls -la render-assets/videos/ 2>/dev/null || true
+          echo "=== Count ==="
+          ls render-assets/videos/*.mp4 2>/dev/null | wc -l || true
       - name: Download composition assets
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"

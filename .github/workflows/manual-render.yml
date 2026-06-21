@@ -24,27 +24,28 @@ jobs:
       - name: Download assets and render
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"; mkdir -p r/thumbs r/memes
-          curl -sf "${WORKER_URL}/api/assets/${{ inputs.date }}/composition/index.html" -o r/c.html || true
-          if [ -f r/c.html ]; then
-            grep -oP 'src="(thumbs/[^"]+|memes/[^"]+|audio/[^"]+)"' r/c.html | while read -r match; do
+          curl -sf "${WORKER_URL}/api/assets/${{ inputs.date }}/composition/index.html" -o r/composition.html || true
+          if [ -f r/composition.html ]; then
+            grep -oP 'src="(thumbs/[^"]+|memes/[^"]+|audio/[^"]+)"' r/composition.html | while read -r match; do
               src="${match#src=\"}"; src="${src%\"}"
               mkdir -p "$(dirname "r/$src")"
               curl -sf "${WORKER_URL}/api/assets/${{ inputs.date }}/$src" -o "r/$src" || true
             done
-            (cd r && npx hyperframes render --input c.html --output o.mp4)
+            cp r/composition.html r/index.html
+            (cd r && npx hyperframes render . --output o.mp4) || true
           fi
           if [ ! -f r/o.mp4 ]; then
-            python3 -c "open('r/f.html','w').write('<h1>${{ inputs.date }}</h1>')"
-            npx hyperframes render --input r/f.html --output r/o.mp4 || true
+            python3 -c "open('r/index.html','w').write('<h1>${{ inputs.date }}</h1>')"
+            (cd r && npx hyperframes render . --output o.mp4) || true
           fi
       - name: Upload & notify
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
           if [ -f r/o.mp4 ]; then
             curl -sf -X PUT "${WORKER_URL}/api/upload/${{ inputs.date }}/output.mp4" --data-binary "@r/o.mp4" -H "Content-Type: video/mp4" || true
-            ffmpeg -i r/o.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" r/thumbnail.jpg -y || true
-            if [ -f r/thumbnail.jpg ]; then
-              curl -sf -X PUT "${WORKER_URL}/api/upload/${{ inputs.date }}/thumbnail.jpg" --data-binary "@r/thumbnail.jpg" -H "Content-Type: image/jpeg" || true
+            ffmpeg -i r/o.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" r/t.jpg -y || true
+            if [ -f r/t.jpg ]; then
+              curl -sf -X PUT "${WORKER_URL}/api/upload/${{ inputs.date }}/thumbnail.jpg" --data-binary "@r/t.jpg" -H "Content-Type: image/jpeg" || true
             fi
           fi
           DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 r/o.mp4 2>/dev/null || echo "0")

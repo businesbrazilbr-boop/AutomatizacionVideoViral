@@ -1,7 +1,14 @@
 name: Daily Viral Video Render
 on:
-  repository_dispatch:
-    types: [render-request]
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Project date (YYYY-MM-DD)'
+        required: true
+        type: string
+        default: ''
+  schedule:
+    - cron: '0 2 * * *'
 
 env:
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -21,6 +28,16 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Resolve date
+        env:
+          INPUT_DATE: ${{ inputs.date }}
+        run: |
+          if [ -n "$INPUT_DATE" ]; then
+            echo "DATE=$INPUT_DATE" >> $GITHUB_ENV
+          else
+            echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
+          fi
+
       - name: Install FFmpeg
         run: |
           sudo apt update -qq
@@ -33,7 +50,7 @@ jobs:
       - name: Download assets from R2
         run: |
           mkdir -p render-assets/videos render-assets/memes render-assets/audio
-          DATE="${{ github.event.client_payload.date }}"
+          DATE="${{ env.DATE }}"
           echo "Downloading assets for date: $DATE"
 
           wrangler r2 object get viral-video-assets/$DATE/composition/index.html --file render-assets/composition.html || true
@@ -69,7 +86,7 @@ jobs:
 
           if [ ! -f output/output.mp4 ]; then
             echo "Creating fallback composition"
-            DATE="${{ github.event.client_payload.date }}"
+            DATE="${{ env.DATE }}"
             python3 -c "
 html = '''<!DOCTYPE html><html lang=\"es\"><head>
 <meta charset=\"UTF-8\"/><meta name=\"viewport\" content=\"width=1080,height=1920\"/>
@@ -99,7 +116,7 @@ with open('fallback.html','w',encoding='utf-8') as f:
 
       - name: Upload to R2
         run: |
-          DATE="${{ github.event.client_payload.date }}"
+          DATE="${{ env.DATE }}"
 
           wrangler r2 object put viral-video-renders/$DATE/output.mp4 --file render-assets/output/output.mp4 || true
           wrangler r2 object put viral-video-renders/$DATE/thumbnail.jpg --file render-assets/output/thumbnail.jpg || true
@@ -113,9 +130,9 @@ with open('fallback.html','w',encoding='utf-8') as f:
           curl -X POST "${RENDER_CALLBACK_URL}" \
             -H "Content-Type: application/json" \
             -d "{
-              \"date\": \"${{ github.event.client_payload.date }}\",
+              \"date\": \"${{ env.DATE }}\",
               \"status\": \"done\",
-              \"r2Key\": \"${{ github.event.client_payload.date }}/output.mp4\",
+              \"r2Key\": \"${{ env.DATE }}/output.mp4\",
               \"duration\": ${DURATION:-0},
               \"secret\": \"${RENDER_CALLBACK_SECRET}\"
             }"

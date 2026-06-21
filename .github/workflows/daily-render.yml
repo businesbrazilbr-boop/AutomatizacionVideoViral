@@ -24,63 +24,45 @@ jobs:
         env:
           INPUT_DATE: ${{ inputs.date }}
         run: |-
-          if [ -n "${INPUT_DATE}" ]; then
-            echo "DATE=${INPUT_DATE}" >> $GITHUB_ENV
-          else
-            echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
-          fi
-      - name: Install FFmpeg
-        run: sudo apt update -qq && sudo apt install ffmpeg -y -qq && ffmpeg -version
-      - name: Install Hyperframes
-        run: npm install -g hyperframes
-      - name: Install yt-dlp
-        run: sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && sudo chmod a+x /usr/local/bin/yt-dlp && yt-dlp --version
+          if [ -n "${INPUT_DATE}" ]; then echo "DATE=${INPUT_DATE}" >> $GITHUB_ENV; else echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV; fi
+      - name: Install deps
+        run: |-
+          sudo apt update -qq && sudo apt install ffmpeg -y -qq
+          npm install -g hyperframes
       - name: Download composition assets
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
-          mkdir -p render-assets/thumbs render-assets/memes render-assets/audio render-assets/videos
-          echo "Downloading composition.html for ${{ env.DATE }}"
+          mkdir -p render-assets/thumbs render-assets/memes render-assets/audio
           curl -sf "${WORKER_URL}/api/assets/${{ env.DATE }}/composition/index.html" -o render-assets/composition.html || true
           if [ -f render-assets/composition.html ]; then
             grep -oP 'src="(thumbs/[^"]+|memes/[^"]+|audio/[^"]+)"' render-assets/composition.html | while read -r match; do
               src="${match#src=\"}"; src="${src%\"}"
-              local_file="render-assets/$src"
-              mkdir -p "$(dirname "$local_file")"
-              echo "Downloading $src"
-              curl -sf "${WORKER_URL}/api/assets/${{ env.DATE }}/$src" -o "$local_file" || true
+              mkdir -p "$(dirname "render-assets/$src")"
+              curl -sf "${WORKER_URL}/api/assets/${{ env.DATE }}/$src" -o "render-assets/$src" || true
             done
+            cp render-assets/composition.html render-assets/index.html
           fi
       - name: Render to MP4
         run: |-
-          cd render-assets && mkdir -p output
-          if [ -f composition.html ]; then
-            npx hyperframes render --input composition.html --output output/output.mp4
-          fi
-          if [ ! -f output/output.mp4 ]; then
-            echo "Hyperframes render failed, trying fallback"
-            python3 -c "h='<h1>${{ env.DATE }}</h1>';open('fb.html','w').write(h)"
-            npx hyperframes render --input fb.html --output output/output.mp4 || true
+          mkdir -p render-assets/output
+          if [ -f render-assets/index.html ]; then
+            (cd render-assets && npx hyperframes render . --output output/output.mp4) || \
+            (cd render-assets && python3 -c "open('index.html','w').write('<h1>${{ env.DATE }}</h1>')" && \
+             npx hyperframes render . --output output/output.mp4) || true
           fi
       - name: Generate thumbnail
         run: if [ -f render-assets/output/output.mp4 ]; then ffmpeg -i render-assets/output/output.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" render-assets/output/thumbnail.jpg -y; fi || true
-      - name: Upload output to Worker
+      - name: Upload to Worker
         run: |-
           WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
           if [ -f render-assets/output/output.mp4 ]; then
-            echo "Uploading output.mp4 (size: $(stat -c%s render-assets/output/output.mp4) bytes)"
-            curl -sf -X PUT "${WORKER_URL}/api/upload/${{ env.DATE }}/output.mp4" \
-              --data-binary "@render-assets/output/output.mp4" \
-              -H "Content-Type: video/mp4" || true
+            curl -sf -X PUT "${WORKER_URL}/api/upload/${{ env.DATE }}/output.mp4" --data-binary "@render-assets/output/output.mp4" -H "Content-Type: video/mp4" || true
           fi
           if [ -f render-assets/output/thumbnail.jpg ]; then
-            echo "Uploading thumbnail.jpg"
-            curl -sf -X PUT "${WORKER_URL}/api/upload/${{ env.DATE }}/thumbnail.jpg" \
-              --data-binary "@render-assets/output/thumbnail.jpg" \
-              -H "Content-Type: image/jpeg" || true
+            curl -sf -X PUT "${WORKER_URL}/api/upload/${{ env.DATE }}/thumbnail.jpg" --data-binary "@render-assets/output/thumbnail.jpg" -H "Content-Type: image/jpeg" || true
           fi
       - name: Notify Cloudflare
         run: |-
           DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 render-assets/output/output.mp4 2>/dev/null || echo "0")
-          curl -X POST "${RENDER_CALLBACK_URL}" \
-            -H "Content-Type: application/json" \
+          curl -X POST "${RENDER_CALLBACK_URL}" -H "Content-Type: application/json" \
             -d "{\"date\":\"${{ env.DATE }}\",\"status\":\"done\",\"r2Key\":\"${{ env.DATE }}/output.mp4\",\"duration\":${DURATION:-0},\"secret\":\"${RENDER_CALLBACK_SECRET}\"}"

@@ -34,46 +34,10 @@ jobs:
         run: sudo apt update -qq && sudo apt install ffmpeg -y -qq && ffmpeg -version
       - name: Install Wrangler
         run: npm install -g wrangler
-      - name: Download assets from R2
-        run: |-
-          mkdir -p render-assets/videos render-assets/memes render-assets/audio
-          echo "Downloading assets for date: ${{ env.DATE }}"
-          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/videos/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
-            wrangler r2 object get viral-video-assets/$key --file render-assets/videos/$(basename $key) || true
-          done || true
-          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/memes/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
-            wrangler r2 object get viral-video-assets/$key --file render-assets/memes/$(basename $key) || true
-          done || true
-          ls -la render-assets/
       - name: Install Hyperframes
         run: npm install -g hyperframes
-      - name: Render to MP4
+      - name: Download assets from R2
         run: |-
-          cd render-assets && mkdir -p output
-          if [ -f composition.html ]; then
-            npx hyperframes preview &
-            P=$! && sleep 3
-            npx hyperframes render --output output/output.mp4 || true
-            kill $P 2>/dev/null || true
-          fi
-          if [ ! -f output/output.mp4 ]; then
-            python3 -c "
-h = '<!doctype html><html><head><meta charset=UTF-8><title>Fallback</title></head><body><h1>Automatizacion Video Viral ${{ env.DATE }}</h1></body></html>'
-with open('fallback.html','w') as f: f.write(h)
-"
-            npx hyperframes render --input fallback.html --output output/output.mp4 || true
-          fi
-          ls -la output/
-      - name: Generate thumbnail
-        run: ffmpeg -i render-assets/output/output.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" render-assets/output/thumbnail.jpg -y || true
-      - name: Upload to R2
-        run: |-
-          wrangler r2 object put viral-video-renders/${{ env.DATE }}/output.mp4 --file render-assets/output/output.mp4 || true
-          wrangler r2 object put viral-video-renders/${{ env.DATE }}/thumbnail.jpg --file render-assets/output/thumbnail.jpg || true
-      - name: Notify Cloudflare
-        run: |-
-          DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 render-assets/output/output.mp4 2>/dev/null || echo "0")
-          curl -X POST "${RENDER_CALLBACK_URL}" \
-            -H "Content-Type: application/json" \
-            -d "{\"date\":\"${{ env.DATE }}\",\"status\":\"done\",\"r2Key\":\"${{ env.DATE }}/output.mp4\",\"duration\":${DURATION:-0},\"secret\":\"${RENDER_CALLBACK_SECRET}\"}"
+          mkdir -p render-assets
+          echo "Date: ${{ env.DATE }}"
+          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html || true

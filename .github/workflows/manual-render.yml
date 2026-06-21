@@ -7,7 +7,6 @@ on:
         required: true
         type: string
 env:
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
   RENDER_CALLBACK_URL: ${{ secrets.RENDER_CALLBACK_URL }}
   RENDER_CALLBACK_SECRET: ${{ secrets.RENDER_CALLBACK_SECRET }}
 jobs:
@@ -21,18 +20,16 @@ jobs:
       - name: Install deps
         run: |-
           sudo apt update -qq && sudo apt install ffmpeg -y -qq
-          npm install -g wrangler hyperframes
+          npm install -g hyperframes
       - name: Download assets and render
         run: |-
-          mkdir -p r/thumbs r/memes
-          wrangler r2 object get viral-video-assets/${{ inputs.date }}/composition/index.html --file r/c.html --remote
+          WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"; mkdir -p r/thumbs r/memes
+          curl -sf "${WORKER_URL}/api/assets/${{ inputs.date }}/composition/index.html" -o r/c.html || true
           if [ -f r/c.html ]; then
             grep -oP 'src="(thumbs/[^"]+|memes/[^"]+|audio/[^"]+)"' r/c.html | while read -r match; do
-              src="${match#src=\"}"
-              src="${src%\"}"
-              key="${{ inputs.date }}/$src"
+              src="${match#src=\"}"; src="${src%\"}"
               mkdir -p "$(dirname "r/$src")"
-              wrangler r2 object get "viral-video-assets/$key" --file "r/$src" --remote || true
+              curl -sf "${WORKER_URL}/api/assets/${{ inputs.date }}/$src" -o "r/$src" || true
             done
             (cd r && npx hyperframes render --input c.html --output o.mp4)
           fi
@@ -42,14 +39,14 @@ jobs:
           fi
       - name: Upload & notify
         run: |-
+          WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
           if [ -f r/o.mp4 ]; then
-            wrangler r2 object put viral-video-renders/${{ inputs.date }}/output.mp4 --file r/o.mp4 --remote
+            curl -sf -X PUT "${WORKER_URL}/api/upload/${{ inputs.date }}/output.mp4" --data-binary "@r/o.mp4" -H "Content-Type: video/mp4" || true
             ffmpeg -i r/o.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" r/thumbnail.jpg -y || true
             if [ -f r/thumbnail.jpg ]; then
-              wrangler r2 object put viral-video-renders/${{ inputs.date }}/thumbnail.jpg --file r/thumbnail.jpg --remote
+              curl -sf -X PUT "${WORKER_URL}/api/upload/${{ inputs.date }}/thumbnail.jpg" --data-binary "@r/thumbnail.jpg" -H "Content-Type: image/jpeg" || true
             fi
           fi
           DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 r/o.mp4 2>/dev/null || echo "0")
-          curl -X POST "${RENDER_CALLBACK_URL}" \
-            -H "Content-Type: application/json" \
+          curl -X POST "${RENDER_CALLBACK_URL}" -H "Content-Type: application/json" \
             -d "{\"date\":\"${{ inputs.date }}\",\"status\":\"done\",\"r2Key\":\"${{ inputs.date }}/output.mp4\",\"duration\":${DURATION:-0},\"secret\":\"${RENDER_CALLBACK_SECRET}\"}"

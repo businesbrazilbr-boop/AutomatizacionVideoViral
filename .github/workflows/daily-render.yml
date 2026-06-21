@@ -51,7 +51,7 @@ jobs:
             OUT="render-assets/videos/${FNAME}.mp4"
             echo "Downloading $FNAME from $URL"
             yt-dlp --extractor-args "youtube:player_client=web_creator" \
-              -f "worst[ext=mp4]" --match-filter "duration < 120" \
+              -f "worst[ext=mp4]" --max-filesize 100M \
               --output "$OUT" "$URL" || true
             if [ -f "$OUT" ]; then
               echo "  OK: $FNAME (size: $(stat -c%s "$OUT" 2>/dev/null || echo 0) bytes)"

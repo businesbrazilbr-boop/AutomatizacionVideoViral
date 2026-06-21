@@ -56,3 +56,7 @@ jobs:
           fi
       - name: Generate thumbnail
         run: ffmpeg -i render-assets/output/output.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" render-assets/output/thumbnail.jpg -y || true
+      - name: Upload to R2
+        run: |-
+          wrangler r2 object put viral-video-renders/${{ env.DATE }}/output.mp4 --file render-assets/output/output.mp4 || true
+          wrangler r2 object put viral-video-renders/${{ env.DATE }}/thumbnail.jpg --file render-assets/output/thumbnail.jpg || true

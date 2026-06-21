@@ -30,35 +30,7 @@ jobs:
           else
             echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
           fi
-      - name: Install deps
-        run: |-
-          sudo apt update -qq && sudo apt install ffmpeg -y -qq
-          npm install -g wrangler hyperframes
-      - name: Download from R2
-        run: |-
-          mkdir -p r
-          echo "Date: ${{ env.DATE }}"
-          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file r/c.html || true
-      - name: Render MP4
-        run: |-
-          cd r && mkdir -p out
-          if [ -f c.html ]; then
-            npx hyperframes preview &
-            P=$! && sleep 3
-            npx hyperframes render --input c.html --output out/o.mp4 || true
-            kill $P 2>/dev/null || true
-          fi
-          if [ ! -f out/o.mp4 ]; then
-            python3 -c "
-h = '<!doctype html><meta charset=UTF-8><title>x</title><h1>Hi ${{ env.DATE }}</h1>'
-with open('fb.html','w') as f: f.write(h)
-"
-            npx hyperframes render --input fb.html --output out/o.mp4 || true
-          fi
-          ls -la out/
-      - name: Upload R2 + callback
-        run: |-
-          wrangler r2 object put viral-video-renders/${{ env.DATE }}/o.mp4 --file r/out/o.mp4 || true
-          curl -X POST "${RENDER_CALLBACK_URL}" \
-            -H "Content-Type: application/json" \
-            -d "{\"date\":\"${{ env.DATE }}\",\"status\":\"done\",\"secret\":\"${RENDER_CALLBACK_SECRET}\"}"
+      - name: Install FFmpeg
+        run: sudo apt update -qq && sudo apt install ffmpeg -y -qq && ffmpeg -version
+      - name: Install Wrangler
+        run: npm install -g wrangler

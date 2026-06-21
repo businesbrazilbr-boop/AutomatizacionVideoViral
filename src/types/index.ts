@@ -83,4 +83,5 @@ export interface Env {
   FREESOUND_API_KEY: string;
   YOUTUBE_API_KEY: string;
   JAMENDO_CLIENT_ID: string;
+  YT_COOKIES?: string;
 }

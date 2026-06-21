@@ -172,24 +172,25 @@ export default {
         });
       }
 
-      // POST /api/youtube-download — download YouTube video via Worker (bypass yt-dlp bot blocks)
+      // POST /api/youtube-download — download YouTube video via Worker
       if (method === 'POST' && path === '/api/youtube-download') {
         const body: any = await request.json();
         const { videoId, date, filename } = body;
         if (!videoId || !date || !filename) {
           return Response.json({ error: 'Missing videoId, date, or filename' }, { status: 400, headers: corsHeaders });
         }
-        const buf = await downloadYouTubeVideo(videoId);
-        if (!buf || buf.byteLength < 1000) {
-          return Response.json({ error: 'Failed to download video' }, { status: 502, headers: corsHeaders });
+        const result = await downloadYouTubeVideo(videoId, env.YT_COOKIES);
+        if (!result.data || result.data.byteLength < 1000) {
+          return Response.json({ error: result.error || 'Failed to download video' }, { status: 502, headers: corsHeaders });
         }
+        const buf = result.data;
         const key = `${date}/videos/${filename}.mp4`;
         await env.R2_ASSETS.put(key, buf, {
           httpMetadata: { contentType: 'video/mp4' },
         });
         await env.DB.prepare(
           `UPDATE assets SET metadata = json_set(metadata, '$.status', 'downloaded') WHERE project_id = ? AND id = ?`
-        ).bind(date, `${date}_yt_${videoId}`).run();
+        ).bind(date, `yt_${videoId}`).run();
         return Response.json({ ok: true, size: buf.byteLength }, { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       }
 

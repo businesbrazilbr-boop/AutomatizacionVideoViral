@@ -40,6 +40,7 @@
     "OMKAR_API_KEY": "ok_cbf393c7728a5b966e8030dec1820605",
     "FREESOUND_API_KEY": "mRxkri4TBQJTv5q0EXY4",
     "YOUTUBE_API_KEY": "AIzaSyChF56OIm-q-cAi-r48nCiF18wcXsuCBb8",
-    "JAMENDO_CLIENT_ID": ""
+    "JAMENDO_CLIENT_ID": "",
+    "YT_COOKIES": ""
   }
 }

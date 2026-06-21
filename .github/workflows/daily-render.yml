@@ -78,11 +78,11 @@ jobs:
       - name: Render to MP4
         run: |-
           cd render-assets && mkdir -p output
-          if ls videos/*.mp4 2>/dev/null; then
+          if [ -f composition.html ]; then
             npx hyperframes render --input composition.html --output output/output.mp4 || true
           fi
           if [ ! -f output/output.mp4 ]; then
-            python3 -c "h='<h1>${{ env.DATE }}</h1>';open('fb.html','w').write(h)"
+            python3 -c "h='<h1>${{ env.DATE }}</h1>';open('fb.html','w').write(h)" 2>/dev/null
             npx hyperframes render --input fb.html --output output/output.mp4 || true
           fi
       - name: Generate thumbnail

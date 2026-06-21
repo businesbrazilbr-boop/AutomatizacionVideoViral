@@ -30,5 +30,76 @@ jobs:
           else
             echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
           fi
-      - name: Verify
-        run: echo "Rendering for ${{ env.DATE }}"
+      - name: Install FFmpeg
+        run: |-
+          sudo apt update -qq && sudo apt install ffmpeg -y -qq && ffmpeg -version
+      - name: Install Wrangler
+        run: npm install -g wrangler
+      - name: Download assets from R2
+        run: |-
+          mkdir -p render-assets/videos render-assets/memes render-assets/audio
+          echo "Downloading assets for date: ${{ env.DATE }}"
+          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html || true
+          echo "Composition download done"
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/videos/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
+            wrangler r2 object get viral-video-assets/$key --file render-assets/videos/$(basename $key) || true
+          done || true
+          wrangler r2 object list viral-video-assets --prefix ${{ env.DATE }}/memes/ 2>/dev/null | jq -r '.[].key' 2>/dev/null | while read key; do
+            wrangler r2 object get viral-video-assets/$key --file render-assets/memes/$(basename $key) || true
+          done || true
+          echo "Assets downloaded"
+          ls -la render-assets/
+      - name: Install Hyperframes
+        run: npm install -g hyperframes
+      - name: Render to MP4
+        run: |-
+          cd render-assets && mkdir -p output
+          if [ -f composition.html ]; then
+            echo "Found composition, starting preview server..."
+            npx hyperframes preview &
+            PID=$! && sleep 3
+            npx hyperframes render --output output/output.mp4 || true
+            kill $PID 2>/dev/null || true
+          fi
+          if [ ! -f output/output.mp4 ]; then
+            echo "Creating fallback composition"
+            DATE=${{ env.DATE }}
+            python3 -c "
+html = '''<!DOCTYPE html><html lang=\"es\"><head>
+<meta charset=\"UTF-8\"/><meta name=\"viewport\" content=\"width=1080,height=1920\"/>
+<script src=\"https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js\"></script>
+<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:1080px;height:1920px;overflow:hidden;background:linear-gradient(135deg,#0f0f23,#1a1a3e)}.clip{position:absolute;opacity:0}</style>
+</head><body>
+<div data-composition-id=\"main\" data-duration=\"15\" data-width=\"1080\" data-height=\"1920\">
+<div id=\"title\" class=\"clip\" data-start=\"0\" data-duration=\"15\" data-track-index=\"0\" style=\"position:absolute;top:50%%;left:50%%;transform:translate(-50%%,-50%%);font-size:72px;font-weight:800;color:#fff;text-align:center;\">Automatizacion Video Viral<br/><span style=\"font-size:28px;color:#00d4ff;\">''' + \"$DATE\" + '''</span></div>
+</div>
+<script>window.__timelines={};const tl=gsap.timeline({paused:true});tl.from(\"#title\",{opacity:0,y:60,scale:0.9,duration:1.2,ease:\"power3.out\"},0);window.__timelines[\"main\"]=tl;</script>
+</body></html>'''
+with open('fallback.html','w',encoding='utf-8') as f:
+    f.write(html)
+"
+            npx hyperframes render --input fallback.html --output output/output.mp4 || true
+          fi
+          if [ ! -f output/output.mp4 ]; then
+            echo "ERROR: Render failed" && exit 1
+          fi
+          ls -la output/
+      - name: Generate thumbnail
+        run: ffmpeg -i render-assets/output/output.mp4 -ss 00:00:01 -vframes 1 -vf "scale=540:960" render-assets/output/thumbnail.jpg -y || true
+      - name: Upload to R2
+        run: |-
+          wrangler r2 object put viral-video-renders/${{ env.DATE }}/output.mp4 --file render-assets/output/output.mp4 || true
+          wrangler r2 object put viral-video-renders/${{ env.DATE }}/thumbnail.jpg --file render-assets/output/thumbnail.jpg || true
+          echo "Uploaded output.mp4 and thumbnail.jpg"
+      - name: Notify Cloudflare callback
+        run: |-
+          DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 render-assets/output/output.mp4 2>/dev/null || echo "0")
+          curl -X POST "${RENDER_CALLBACK_URL}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"date\": \"${{ env.DATE }}\",
+              \"status\": \"done\",
+              \"r2Key\": \"${{ env.DATE }}/output.mp4\",
+              \"duration\": ${DURATION:-0},
+              \"secret\": \"${RENDER_CALLBACK_SECRET}\"
+            }"

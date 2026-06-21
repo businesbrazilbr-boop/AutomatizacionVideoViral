@@ -1,0 +1,24 @@
+{
+  "name": "automatizacion-video-viral",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:dashboard": "wrangler pages deploy src/dashboard --project-name=automatizacion-video-viral",
+    "db:init": "wrangler d1 execute viral-video-db --file=schema.sql",
+    "db:migrate": "wrangler d1 migrations apply viral-video-db",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write 'src/**/*.ts'"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250501.0",
+    "typescript": "^5.8.0",
+    "wrangler": "^4.0.0",
+    "prettier": "^3.4.0"
+  },
+  "dependencies": {
+    "@cloudflare/d1": "^1.4.0"
+  }
+}

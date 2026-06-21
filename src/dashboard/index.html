@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Automatización Video Viral</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;background:#0a0a1a;color:#e0e0e0;min-height:100vh}
+    .header{background:linear-gradient(135deg,#0f0f23,#1a1a3e);padding:24px 40px;border-bottom:1px solid rgba(255,255,255,0.08)}
+    .header h1{font-size:24px;font-weight:800;color:#fff;letter-spacing:-0.5px}
+    .header h1 span{color:#00d4ff}
+    .header .sub{font-size:13px;color:#666;margin-top:4px}
+    .container{max-width:1200px;margin:0 auto;padding:24px 40px}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px}
+    .stat-card{background:#13132b;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px}
+    .stat-card .value{font-size:32px;font-weight:700;color:#fff}
+    .stat-card .label{font-size:13px;color:#888;margin-top:4px}
+    .stat-card .trend{font-size:12px;color:#00ff88;margin-top:8px}
+    .projects{display:grid;gap:16px}
+    .project-card{background:#13132b;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;display:flex;align-items:center;gap:20px;cursor:pointer;transition:all 0.2s}
+    .project-card:hover{border-color:#00d4ff40;transform:translateY(-1px)}
+    .project-thumb{width:100px;height:178px;background:linear-gradient(135deg,#1a1a3e,#0f0f23);border-radius:8px;overflow:hidden;flex-shrink:0;position:relative}
+    .project-thumb img{width:100%;height:100%;object-fit:cover}
+    .project-thumb .status-badge{position:absolute;top:6px;left:6px;font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600;text-transform:uppercase}
+    .status-badge.done{background:#00ff8820;color:#00ff88;border:1px solid #00ff8840}
+    .status-badge.failed{background:#ff444420;color:#ff4444;border:1px solid #ff444440}
+    .status-badge.rendering{background:#ffaa0020;color:#ffaa00;border:1px solid #ffaa0040}
+    .status-badge.ready{background:#00d4ff20;color:#00d4ff;border:1px solid #00d4ff40}
+    .status-badge.default{background:#66620;color:#888;border:1px solid #444}
+    .project-info{flex:1;min-width:0}
+    .project-info .date{font-size:16px;font-weight:600;color:#fff}
+    .project-info .narrative{font-size:13px;color:#aaa;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .project-meta{display:flex;gap:16px;margin-top:8px;font-size:12px;color:#666}
+    .project-meta span{display:flex;align-items:center;gap:4px}
+    .project-actions{display:flex;gap:8px;flex-shrink:0}
+    .btn{padding:8px 16px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+    .btn-primary{background:#00d4ff;color:#0a0a1a;font-weight:700}
+    .btn-primary:hover{background:#00b8e6;box-shadow:0 0 20px rgba(0,212,255,0.3)}
+    .btn-secondary{background:rgba(255,255,255,0.06);color:#ccc;border:1px solid rgba(255,255,255,0.1)}
+    .btn-secondary:hover{background:rgba(255,255,255,0.1)}
+    .btn:disabled{opacity:0.4;cursor:not-allowed}
+    .empty-state{text-align:center;padding:80px 20px;color:#666}
+    .empty-state .icon{font-size:48px;margin-bottom:16px}
+    .empty-state h3{font-size:20px;color:#888;margin-bottom:8px}
+    .loader{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.1);border-top-color:#00d4ff;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Automatización <span>Video Viral</span></h1>
+    <div class="sub">Pipeline diario · Descubrimiento IA · Render automático</div>
+  </div>
+
+  <div class="container">
+    <div class="stats" id="stats">
+      <div class="stat-card"><div class="value" id="totalVideos">-</div><div class="label">Videos Renderizados</div></div>
+      <div class="stat-card"><div class="value" id="streak">-</div><div class="label">Días Consecutivos</div></div>
+      <div class="stat-card"><div class="value" id="lastRender">-</div><div class="label">Último Render</div></div>
+      <div class="stat-card"><div class="value" id="status">-</div><div class="label">Estado Actual</div></div>
+    </div>
+
+    <div id="projectsContainer">
+      <div class="empty-state">
+        <div class="icon">🎬</div>
+        <h3>Cargando proyectos...</h3>
+        <div class="loader" style="margin:16px auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://automatizacion-video-viral.businesbrazilbr.workers.dev';
+
+    async function loadProjects() {
+      try {
+        const res = await fetch(`${API_BASE}/api/projects`);
+        const data = await res.json();
+        renderProjects(data.projects || []);
+        renderStats(data.projects || []);
+      } catch (e) {
+        document.getElementById('projectsContainer').innerHTML = `
+          <div class="empty-state">
+            <div class="icon">⚠️</div>
+            <h3>Error al cargar proyectos</h3>
+            <p style="color:#888;font-size:14px;margin-top:8px">${e.message}</p>
+          </div>`;
+      }
+    }
+
+    function renderStats(projects) {
+      const done = projects.filter(p => p.status === 'done');
+      const total = done.length;
+      const last = done[0];
+      const latestStatus = projects[0]?.status || 'N/A';
+
+      document.getElementById('totalVideos').textContent = total;
+      document.getElementById('streak').textContent = calculateStreak(projects);
+      document.getElementById('lastRender').textContent = last
+        ? formatDate(last.date) : 'Nunca';
+      document.getElementById('status').textContent = translateStatus(latestStatus);
+      document.getElementById('status').style.color = statusColor(latestStatus);
+    }
+
+    function calculateStreak(projects) {
+      let streak = 0;
+      const today = new Date();
+      for (let i = 0; i < projects.length; i++) {
+        const projDate = new Date(projects[i].date + 'T00:00:00');
+        const expected = new Date(today);
+        expected.setDate(expected.getDate() - i);
+        if (projDate.toDateString() === expected.toDateString() && projects[i].status === 'done') {
+          streak++;
+        } else break;
+      }
+      return streak + ' días';
+    }
+
+    function renderProjects(projects) {
+      const container = document.getElementById('projectsContainer');
+      if (!projects || projects.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">🎬</div>
+            <h3>No hay proyectos aún</h3>
+            <p style="color:#888;font-size:14px;margin-top:8px">El pipeline diario comenzará esta noche a las 2AM</p>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = '<div class="projects">' +
+        projects.map(p => `
+          <div class="project-card" onclick="openProject('${p.date}')">
+            <div class="project-thumb">
+              <div class="status-badge ${p.status}">${translateStatus(p.status)}</div>
+              ${p.render_r2_key
+                ? `<img src="${API_BASE}/api/render/${p.date}/thumbnail.jpg" alt="" onerror="this.style.display='none'"/>`
+                : ''}
+            </div>
+            <div class="project-info">
+              <div class="date">${formatDate(p.date)}</div>
+              <div class="narrative">${p.narrative || 'Sin descripción'}</div>
+              <div class="project-meta">
+                <span>📅 ${p.date}</span>
+                ${p.render_duration_ms ? `<span>⏱ ${Math.round(p.render_duration_ms/1000)}s</span>` : ''}
+                ${p.render_error ? `<span style="color:#ff4444">❌ ${p.render_error}</span>` : ''}
+              </div>
+            </div>
+            <div class="project-actions">
+              ${p.render_r2_key && p.status === 'done'
+                ? `<a href="${API_BASE}/api/render/${p.date}/output.mp4" class="btn btn-primary" download>⬇ Descargar</a>`
+                : p.status === 'failed'
+                  ? `<button class="btn btn-secondary" onclick="retryRender('${p.date}')">↻ Reintentar</button>`
+                  : `<button class="btn btn-secondary" disabled><span class="loader"></span></button>`
+              }
+            </div>
+          </div>
+        `).join('') + '</div>';
+    }
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    function translateStatus(status) {
+      const map = {
+        discovered: 'Descubierto', selected: 'Seleccionado',
+        composing: 'Componiendo', ready: 'Listo',
+        rendering: 'Renderizando', done: 'Completado', failed: 'Error'
+      };
+      return map[status] || status;
+    }
+
+    function statusColor(status) {
+      const map = { done: '#00ff88', failed: '#ff4444', rendering: '#ffaa00', ready: '#00d4ff' };
+      return map[status] || '#888';
+    }
+
+    async function openProject(date) {
+      window.open(`${API_BASE}/api/projects/${date}`, '_blank');
+    }
+
+    async function retryRender(date) {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await fetch(`${API_BASE}/api/render/${date}`, { method: 'POST' });
+        btn.textContent = '✓ Solicitado';
+        setTimeout(loadProjects, 3000);
+      } catch {
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.disabled = false; btn.innerHTML = '↻ Reintentar'; }, 3000);
+      }
+    }
+
+    loadProjects();
+    setInterval(loadProjects, 30000);
+  </script>
+</body>
+</html>

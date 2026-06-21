@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "automatizacion-video-viral",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/workers/index.ts",
+  "triggers": {
+    "crons": [
+      "0 2 * * *"
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "PROJECT_DO", "class_name": "ProjectDO" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ProjectDO"] }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "viral-video-db",
+      "database_id": "49838c04-42f0-46be-a950-c055a756edd1"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "R2_ASSETS", "bucket_name": "viral-video-assets" },
+    { "binding": "R2_RENDERS", "bucket_name": "viral-video-renders" }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "GITHUB_OWNER": "businesbrazilbr-boop",
+    "GITHUB_REPO": "AutomatizacionVideoViral",
+    "RENDER_CALLBACK_SECRET": "callback-secret-123",
+    "GENVIRAL_API_KEY": "",
+    "APIFY_API_KEY": ""
+  }
+}

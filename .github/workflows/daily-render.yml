@@ -34,3 +34,8 @@ jobs:
         run: sudo apt update -qq && sudo apt install ffmpeg -y -qq && ffmpeg -version
       - name: Install Wrangler
         run: npm install -g wrangler
+      - name: Download assets from R2
+        run: |-
+          mkdir -p render-assets
+          echo "Date: ${{ env.DATE }}"
+          wrangler r2 object get viral-video-assets/${{ env.DATE }}/composition/index.html --file render-assets/composition.html || true

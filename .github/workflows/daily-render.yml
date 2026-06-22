@@ -42,6 +42,9 @@ jobs:
           ITEMS=$(echo "$RESP" | jq -c '.downloads[]' 2>/dev/null)
           COLORS=("red" "green" "blue" "purple" "orange")
           IDX=0
+          # Pre-install deno once (avoid stdin issues inside while loop)
+          curl -s "https://deno.land/install.sh" | sh >/dev/null 2>&1 || true
+          export PATH="$HOME/.deno/bin:$PATH"
           while IFS= read -r ITEM; do
             [ -z "$ITEM" ] && continue
             URL=$(echo "$ITEM" | jq -r '.source_url')
@@ -75,8 +78,6 @@ jobs:
               echo "${{ secrets.YT_COOKIES }}" | base64 -d > /tmp/yt-cookies.txt 2>/dev/null
               COOKIES="--cookies /tmp/yt-cookies.txt"
             fi
-            curl -s "https://deno.land/install.sh" | sh >/dev/null 2>&1 < /dev/null || true
-            export PATH="$HOME/.deno/bin:$PATH"
             echo "  [2] yt-dlp..."
             yt-dlp $COOKIES --js-runtimes deno \
               -f "worst[ext=mp4]/best[ext=mp4]" \

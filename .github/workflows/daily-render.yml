@@ -40,7 +40,7 @@ jobs:
           echo "=== Pending downloads ==="
           echo "$RESP" | jq -r '.downloads[] | .id' 2>/dev/null || echo "(none)"
           ITEMS=$(echo "$RESP" | jq -c '.downloads[]' 2>/dev/null)
-          COLORS=("red" "green" "blue" "purple" "orange")
+          COLORS=("red" "green" "blue" "purple" "orange" "cyan" "magenta" "yellow" "white" "lime")
           IDX=0
           # Pre-install deno once
           curl -s "https://deno.land/install.sh" | sh >/dev/null 2>&1 || true

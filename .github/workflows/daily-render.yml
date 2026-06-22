@@ -99,11 +99,12 @@ jobs:
             else
               FONT_OPTS=""
             fi
-            ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6:pix_fmt=yuv420p" \
-              -vf "drawtext=text=$TITLE:fontsize=48:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2$FONT_OPTS" \
-              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" 2>&1 | tail -3 || \
-            ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6:pix_fmt=yuv420p" \
-              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" 2>&1 | tail -3 || true
+            echo "FFMPEG>> color=$COLOR title=$TITLE font=$FT"
+            ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6:r=30" \
+              -vf "drawtext=text=Clip:fontsize=48:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2$FONT_OPTS" \
+              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" 2>&1 || \
+            ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6:r=30" \
+              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" 2>&1 || true
             if [ -f "$OUT" ]; then
               echo "  Placeholder: $(stat -c%s "$OUT") bytes"
             fi

@@ -75,7 +75,7 @@ jobs:
               echo "${{ secrets.YT_COOKIES }}" | base64 -d > /tmp/yt-cookies.txt 2>/dev/null
               COOKIES="--cookies /tmp/yt-cookies.txt"
             fi
-            curl -s "https://deno.land/install.sh" | sh >/dev/null 2>&1 || true
+            curl -s "https://deno.land/install.sh" | sh >/dev/null 2>&1 < /dev/null || true
             export PATH="$HOME/.deno/bin:$PATH"
             echo "  [2] yt-dlp..."
             yt-dlp $COOKIES --js-runtimes deno \

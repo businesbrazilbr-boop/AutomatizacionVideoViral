@@ -42,9 +42,11 @@ jobs:
           ITEMS=$(echo "$RESP" | jq -c '.downloads[]' 2>/dev/null)
           COLORS=("red" "green" "blue" "purple" "orange")
           IDX=0
-          # Pre-install deno once (avoid stdin issues inside while loop)
+          # Pre-install deno once
           curl -s "https://deno.land/install.sh" | sh >/dev/null 2>&1 || true
           export PATH="$HOME/.deno/bin:$PATH"
+          # Save items to temp file to avoid stdin issues
+          echo "$RESP" | jq -c '.downloads[]' 2>/dev/null > /tmp/yt-items.json
           while IFS= read -r ITEM; do
             [ -z "$ITEM" ] && continue
             URL=$(echo "$ITEM" | jq -r '.source_url')
@@ -56,7 +58,7 @@ jobs:
             echo ""
             echo ">>> $FNAME (yt:$YTID)"
             
-            # Strategy 1: Download via Worker
+            # Strategy 1: Worker
             echo "  [1] Worker download..."
             DL=$(curl -s -X POST "${WORKER_URL}/api/youtube-download" \
               -H "Content-Type: application/json" \
@@ -79,9 +81,9 @@ jobs:
               COOKIES="--cookies /tmp/yt-cookies.txt"
             fi
             echo "  [2] yt-dlp..."
-            yt-dlp $COOKIES --js-runtimes deno \
+            yt-dlp $COOKIES --no-progress --js-runtimes deno \
               -f "worst[ext=mp4]/best[ext=mp4]" \
-              --output "$OUT" "$URL" || echo "yt-dlp failed"
+              --output "$OUT" "$URL" < /dev/null || echo "yt-dlp failed"
             if [ -f "$OUT" ] && [ "$(stat -c%s "$OUT")" -gt 1000 ]; then
               echo "  OK via yt-dlp: $(stat -c%s "$OUT") bytes"
               IDX=$((IDX+1))
@@ -92,25 +94,20 @@ jobs:
             echo "  [3] Generating placeholder..."
             COLOR="${COLORS[$IDX]}"
             TITLE=$(echo "$ITEM" | jq -r '.title // "Clip"')
-            # Strip special chars for FFmpeg drawtext
             TITLE=$(echo "$TITLE" | sed "s/'//g; s/[^a-zA-Z0-9 ]//g")
             FT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-            if [ -f "$FT" ]; then
-              FONT_OPTS=":fontfile=$FT"
-            else
-              FONT_OPTS=""
-            fi
+            [ -f "$FT" ] && FONT_OPTS=":fontfile=$FT" || FONT_OPTS=""
             echo "FFMPEG>> color=$COLOR title=$TITLE font=$FT"
             ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6:r=30" \
               -vf "drawtext=text=Clip:fontsize=48:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2$FONT_OPTS" \
-              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" 2>&1 || \
+              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" < /dev/null 2>&1 || \
             ffmpeg -y -f lavfi -i "color=c=$COLOR:s=1080x1920:d=6:r=30" \
-              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" 2>&1 || true
+              -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p "$OUT" < /dev/null 2>&1 || true
             if [ -f "$OUT" ]; then
               echo "  Placeholder: $(stat -c%s "$OUT") bytes"
             fi
             IDX=$((IDX+1))
-          done <<< "$ITEMS"
+          done < /tmp/yt-items.json
           echo ""
           echo "=== Videos in render-assets/videos/ ==="
           shopt -s nullglob; for f in render-assets/videos/*.mp4; do echo "  $f ($(stat -c%s "$f" 2>/dev/null || echo 0) bytes)"; done; shopt -u nullglob

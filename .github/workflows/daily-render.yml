@@ -124,7 +124,7 @@ jobs:
               src="${match#src=\"}"; src="${src%\"}"
               local_path="render-assets/$src"
               if [ -f "$local_path" ] && [ "$(stat -c%s "$local_path" 2>/dev/null || echo 0)" -gt 1000 ]; then
-                echo "  Already have $src (skipping)"
+                echo "  Already have $src ($(stat -c%s "$local_path") bytes, skipping)"
               else
                 mkdir -p "$(dirname "$local_path")"
                 tmp_path="${local_path}.tmp"
@@ -133,6 +133,24 @@ jobs:
             done
             cp render-assets/composition.html render-assets/index.html
           fi
+      - name: Check assets before render
+        run: |-
+          WORKER_URL="${RENDER_CALLBACK_URL%/api/*}"
+          mkdir -p diag
+          echo "=== render-assets/ dirs ===" > diag/status.txt
+          ls -la render-assets/ >> diag/status.txt 2>&1
+          echo "" >> diag/status.txt
+          echo "=== Videos ===" >> diag/status.txt
+          ls -lh render-assets/videos/*.mp4 >> diag/status.txt 2>&1
+          for f in render-assets/videos/*.mp4; do
+            [ -f "$f" ] && ffprobe -v error -show_entries format=format_name,duration,size,bit_rate -of csv=p=0 "$f" >> diag/status.txt 2>&1
+          done
+          echo "" >> diag/status.txt
+          echo "=== index.html (first 10 lines) ===" >> diag/status.txt
+          head -10 render-assets/index.html >> diag/status.txt 2>&1
+          echo "" >> diag/status.txt
+          cat diag/status.txt
+          curl -sf -X PUT "${WORKER_URL}/api/upload/${{ env.DATE }}/diagnostic.txt" --data-binary "@diag/status.txt" -H "Content-Type: text/plain" || true
       - name: Render to MP4
         run: |-
           mkdir -p render-assets/output

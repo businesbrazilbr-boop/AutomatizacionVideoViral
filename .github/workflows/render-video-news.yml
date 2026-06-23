@@ -1,0 +1,63 @@
+name: Render Video News
+on:
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: 'Video ID to render'
+        required: true
+      callback_url:
+        description: 'Callback URL for render result'
+        required: true
+      callback_secret:
+        description: 'Secret for callback authentication'
+        required: true
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'npm' }
+      - name: Install deps
+        run: |-
+          sudo apt update -qq && sudo apt install ffmpeg -y -qq
+          npm install -g hyperframes wrangler@latest
+      - name: Download composition assets
+        run: |-
+          mkdir -p r/audio
+          wrangler r2 object get video-news-assets/compositions/${{ inputs.video_id }}.html -o r/composition.html
+          wrangler r2 object get video-news-assets/audio/${{ inputs.video_id }}.mp3 -o r/audio/${{ inputs.video_id }}.mp3
+          cp r/composition.html r/index.html
+      - name: Render to MP4
+        run: |-
+          (cd r && npx hyperframes render . --output o.mp4) || true
+          if [ ! -f r/o.mp4 ]; then
+            echo "<h1>Render failed</h1>" > r/index.html
+            (cd r && npx hyperframes render . --output o.mp4) || true
+          fi
+      - name: Upload rendered video
+        run: |-
+          if [ -f r/o.mp4 ]; then
+            wrangler r2 object put video-news-renders/videos/${{ inputs.video_id }}.mp4 -o r/o.mp4 --content-type video/mp4
+          fi
+      - name: Send callback
+        if: always()
+        run: |-
+          STATUS="done"
+          R2_KEY="videos/${{ inputs.video_id }}.mp4"
+          ERROR=""
+          if [ ! -f r/o.mp4 ]; then
+            STATUS="error"
+            R2_KEY=""
+            ERROR="Render failed"
+          fi
+          DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 r/o.mp4 2>/dev/null || echo "0")
+          curl -X POST "${{ inputs.callback_url }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"video_id\":\"${{ inputs.video_id }}\",\"status\":\"${STATUS}\",\"render_r2_key\":\"${R2_KEY}\",\"error\":\"${ERROR}\",\"duration\":${DURATION:-0},\"secret\":\"${{ inputs.callback_secret }}\"}"
+      - name: Cleanup
+        if: always()
+        run: rm -rf r/

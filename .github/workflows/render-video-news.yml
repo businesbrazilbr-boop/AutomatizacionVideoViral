@@ -13,6 +13,7 @@ on:
         required: true
 env:
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  WORKER_URL: https://video-news-generator.businesbrazilbr.workers.dev
 jobs:
   render:
     runs-on: ubuntu-latest
@@ -24,12 +25,12 @@ jobs:
       - name: Install deps
         run: |-
           sudo apt update -qq && sudo apt install ffmpeg -y -qq
-          npm install -g hyperframes wrangler@latest
+          npm install -g hyperframes
       - name: Download composition assets
         run: |-
           mkdir -p r/audio
-          wrangler r2 object get video-news-assets/compositions/${{ inputs.video_id }}.html -o r/composition.html
-          wrangler r2 object get video-news-assets/audio/${{ inputs.video_id }}.mp3 -o r/audio/${{ inputs.video_id }}.mp3
+          curl -sf "${{ env.WORKER_URL }}/api/assets/compositions/${{ inputs.video_id }}.html" -o r/composition.html
+          curl -sf "${{ env.WORKER_URL }}/api/assets/audio/${{ inputs.video_id }}.mp3" -o r/audio/${{ inputs.video_id }}.mp3
           cp r/composition.html r/index.html
       - name: Render to MP4
         run: |-
@@ -41,7 +42,8 @@ jobs:
       - name: Upload rendered video
         run: |-
           if [ -f r/o.mp4 ]; then
-            wrangler r2 object put video-news-renders/videos/${{ inputs.video_id }}.mp4 -o r/o.mp4 --content-type video/mp4
+            curl -sf -X PUT "${{ env.WORKER_URL }}/api/upload/video/${{ inputs.video_id }}" \
+              --data-binary "@r/o.mp4" -H "Content-Type: video/mp4"
           fi
       - name: Send callback
         if: always()
